@@ -32,7 +32,7 @@ impl wginit::Application for Application {
     }
 
     fn new(
-        gfx: &mut wginit::Graphics,
+        gfx: &wginit::Graphics,
         _user_event_sender: wginit::UserEventSender<Self::UserEvent>,
     ) -> Self {
         let shader = gfx

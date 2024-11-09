@@ -262,7 +262,7 @@ where
     }
 
     /// Creates a new instance of this application.
-    fn new(gfx: &mut Graphics, user_event_sender: UserEventSender<Self::UserEvent>) -> Self;
+    fn new(gfx: &Graphics, user_event_sender: UserEventSender<Self::UserEvent>) -> Self;
 
     /// Processes a redraw request.
     fn redraw(&mut self, gfx: &Graphics);

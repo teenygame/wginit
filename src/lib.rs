@@ -72,8 +72,6 @@ impl Graphics {
         surface_config.present_mode = wgpu::PresentMode::AutoVsync;
         surface.configure(&device, &surface_config);
 
-        window.request_redraw();
-
         Self {
             window,
             device,
@@ -82,13 +80,6 @@ impl Graphics {
             surface,
             surface_config,
         }
-    }
-
-    pub(crate) fn resize(&mut self, size: winit::dpi::PhysicalSize<u32>) {
-        self.surface_config.width = size.width.max(1);
-        self.surface_config.height = size.height.max(1);
-        self.surface.configure(&self.device, &self.surface_config);
-        self.window.request_redraw();
     }
 }
 
@@ -118,13 +109,17 @@ where
     }
 }
 
+struct State<A> {
+    app: A,
+    gfx: Graphics,
+}
+
 struct ApplicationHandler<A>
 where
     A: Application,
 {
-    gfx: Option<Graphics>,
+    state: Option<State<A>>,
     event_loop_proxy: winit::event_loop::EventLoopProxy<UserEvent<A::UserEvent>>,
-    app: Option<A>,
 }
 
 impl<A> ApplicationHandler<A>
@@ -133,9 +128,8 @@ where
 {
     fn new(event_loop: &winit::event_loop::EventLoop<UserEvent<A::UserEvent>>) -> Self {
         Self {
-            gfx: None,
+            state: None,
             event_loop_proxy: event_loop.create_proxy(),
-            app: None,
         }
     }
 }
@@ -169,11 +163,7 @@ where
         _window_id: winit::window::WindowId,
         event: winit::event::WindowEvent,
     ) {
-        let Some(gfx) = &mut self.gfx else {
-            return;
-        };
-
-        let Some(app) = self.app.as_mut() else {
+        let Some(State { app, gfx }) = &mut self.state else {
             return;
         };
 
@@ -181,7 +171,10 @@ where
 
         match event {
             winit::event::WindowEvent::Resized(size) => {
-                gfx.resize(size);
+                gfx.surface_config.width = size.width.max(1);
+                gfx.surface_config.height = size.height.max(1);
+                gfx.surface.configure(&gfx.device, &gfx.surface_config);
+                gfx.window.request_redraw();
             }
             winit::event::WindowEvent::RedrawRequested => {
                 app.redraw(gfx);
@@ -200,14 +193,14 @@ where
     ) {
         match event {
             UserEvent::GraphicsReady(mut gfx) => {
-                self.app = Some(A::new(
-                    &mut gfx,
-                    UserEventSender(self.event_loop_proxy.clone()),
-                ));
-                self.gfx = Some(gfx);
+                gfx.window.request_redraw();
+                self.state = Some(State {
+                    app: A::new(&mut gfx, UserEventSender(self.event_loop_proxy.clone())),
+                    gfx,
+                });
             }
             UserEvent::Custom(e) => {
-                let Some(app) = self.app.as_mut() else {
+                let Some(State { app, .. }) = &mut self.state else {
                     return;
                 };
                 app.user_event(&e);

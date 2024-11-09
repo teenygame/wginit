@@ -167,8 +167,6 @@ where
             return;
         };
 
-        app.window_event(&event);
-
         match event {
             winit::event::WindowEvent::Resized(size) => {
                 gfx.surface_config.width = size.width.max(1);
@@ -184,6 +182,8 @@ where
             }
             _ => {}
         };
+
+        app.window_event(event);
     }
 
     fn user_event(
@@ -203,7 +203,7 @@ where
                 let Some(State { app, .. }) = &mut self.state else {
                     return;
                 };
-                app.user_event(&e);
+                app.user_event(e);
             }
         }
     }
@@ -263,14 +263,14 @@ where
     /// Handles a window event.
     ///
     /// Note that on [`winit::event::WindowEvent::RedrawRequested`], both this and [`Application::redraw`] will be called, but [`Graphics`] will only be available from [`Application::redraw`].
-    fn window_event(&mut self, event: &winit::event::WindowEvent) {
+    fn window_event(&mut self, event: winit::event::WindowEvent) {
         _ = event;
     }
 
     /// Handles a user event.
     ///
     /// User events can be sent using [`UserEventSender`].
-    fn user_event(&mut self, event: &Self::UserEvent) {
+    fn user_event(&mut self, event: Self::UserEvent) {
         _ = event;
     }
 }

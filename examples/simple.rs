@@ -17,7 +17,7 @@ fn fs_main() -> @location(0) vec4<f32> {
 "#;
 
 impl wginit::Application for Application {
-    type UserEvent = ();
+    type UserEvent = std::convert::Infallible;
 
     fn window_attrs() -> winit::window::WindowAttributes {
         #[allow(unused_mut)]

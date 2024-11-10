@@ -2,7 +2,7 @@
 name = "wginit"
 description = "Framework for initializing wgpu + winit"
 repository = "https://github.com/teenygame/wginit"
-version = "0.2.0"
+version = "0.2.1"
 edition = "2021"
 license = "LGPL-3.0-or-later"
 

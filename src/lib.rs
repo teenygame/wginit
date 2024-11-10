@@ -215,13 +215,20 @@ where
 /// You should handle the following yourself:
 /// - Inputs (via [`Application::window_event`])
 /// - Drawing (via [`Application::redraw`])
+///
+/// You may override various aspects of winit/wgpu initialization, e.g.:
+/// - [`wgpu::DeviceDescriptor`] (via [`Application::device_descriptor`])
+/// - [`wgpu::SurfaceConfiguration`] (via [`Application::surface_configuration`])
+/// - [`winit::window::WindowAttributes`] (via [`Application::window_attrs`])
+///
+/// Additionally, events can be delivered to the event loop via the [`UserEventSender`] passed to [`Application::new`]. If used, they can be handled via [`Application::user_event`].
 pub trait Application
 where
     Self::UserEvent: 'static,
 {
     /// The type of user event for this application.
     ///
-    /// If no user events are desired, you can use `()` for the type.
+    /// If no user events are desired, you can use [`std::convert::Infallible`] for the type.
     type UserEvent;
 
     /// Gets the window attributes for creating a window for this application.

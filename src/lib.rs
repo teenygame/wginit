@@ -100,16 +100,12 @@ where
     }
 }
 
-struct State<A> {
-    app: A,
-    gfx: Graphics,
-}
-
 struct ApplicationHandler<A>
 where
     A: Application,
 {
-    state: Option<State<A>>,
+    app: A,
+    gfx: Option<Graphics>,
     event_loop_proxy: winit::event_loop::EventLoopProxy<UserEvent<A::UserEvent>>,
 }
 
@@ -117,9 +113,10 @@ impl<A> ApplicationHandler<A>
 where
     A: Application,
 {
-    fn new(event_loop: &winit::event_loop::EventLoop<UserEvent<A::UserEvent>>) -> Self {
+    fn new(app: A, event_loop: &winit::event_loop::EventLoop<UserEvent<A::UserEvent>>) -> Self {
         Self {
-            state: None,
+            app,
+            gfx: None,
             event_loop_proxy: event_loop.create_proxy(),
         }
     }
@@ -148,13 +145,17 @@ where
         wasm_bindgen_futures::spawn_local(fut);
     }
 
+    fn suspended(&mut self, _event_loop: &winit::event_loop::ActiveEventLoop) {
+        self.app.suspended();
+    }
+
     fn window_event(
         &mut self,
         event_loop: &winit::event_loop::ActiveEventLoop,
         _window_id: winit::window::WindowId,
         event: winit::event::WindowEvent,
     ) {
-        let Some(State { app, gfx }) = &mut self.state else {
+        let Some(gfx) = &mut self.gfx else {
             return;
         };
 
@@ -167,7 +168,7 @@ where
                 gfx.window.request_redraw();
             }
             winit::event::WindowEvent::RedrawRequested => {
-                app.redraw(gfx);
+                self.app.redraw(gfx);
             }
             winit::event::WindowEvent::CloseRequested => {
                 event_loop.exit();
@@ -175,7 +176,7 @@ where
             _ => {}
         };
 
-        app.window_event(event);
+        self.app.window_event(event);
     }
 
     fn user_event(
@@ -184,18 +185,13 @@ where
         event: UserEvent<A::UserEvent>,
     ) {
         match event {
-            UserEvent::GraphicsReady(mut gfx) => {
+            UserEvent::GraphicsReady(gfx) => {
                 gfx.window.request_redraw();
-                self.state = Some(State {
-                    app: A::new(&mut gfx, UserEventSender(self.event_loop_proxy.clone())),
-                    gfx,
-                });
+                self.app.resumed(&gfx);
+                self.gfx = Some(gfx);
             }
             UserEvent::Custom(e) => {
-                let Some(State { app, .. }) = &mut self.state else {
-                    return;
-                };
-                app.user_event(e);
+                self.app.user_event(e);
             }
         }
     }
@@ -213,6 +209,8 @@ where
 /// You should handle the following yourself:
 /// - Inputs (via [`Application::window_event`])
 /// - Drawing (via [`Application::redraw`])
+/// - Resumption (via [`Application::resumed`])
+/// - Suspension (via [`Application::suspended`])
 ///
 /// You may override various aspects of winit/wgpu initialization, e.g.:
 /// - [`wgpu::DeviceDescriptor`] (via [`Application::device_descriptor`])
@@ -278,7 +276,17 @@ where
     }
 
     /// Creates a new instance of this application.
-    fn new(gfx: &Graphics, user_event_sender: UserEventSender<Self::UserEvent>) -> Self;
+    fn new(user_event_sender: UserEventSender<Self::UserEvent>) -> Self;
+
+    /// Handles application resumption.
+    ///
+    /// This function will be called when the graphics context is initialized.
+    fn resumed(&mut self, gfx: &Graphics) {
+        _ = gfx;
+    }
+
+    /// Handles application suspension.
+    fn suspended(&mut self) {}
 
     /// Processes a redraw request.
     fn redraw(&mut self, gfx: &Graphics);
@@ -306,7 +314,10 @@ where
     A: Application,
 {
     let event_loop = winit::event_loop::EventLoop::with_user_event().build()?;
-    let mut app = ApplicationHandler::<A>::new(&event_loop);
+    let mut app = ApplicationHandler::new(
+        A::new(UserEventSender(event_loop.create_proxy())),
+        &event_loop,
+    );
     event_loop.run_app(&mut app)?;
     Ok(())
 }

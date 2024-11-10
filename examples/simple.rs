@@ -1,7 +1,3 @@
-struct Application {
-    render_pipeline: wgpu::RenderPipeline,
-}
-
 const SHADER: &str = r#"
 @vertex
 fn vs_main(@builtin(vertex_index) in_vertex_index: u32) -> @builtin(position) vec4<f32> {
@@ -16,25 +12,12 @@ fn fs_main() -> @location(0) vec4<f32> {
 }
 "#;
 
-impl wginit::Application for Application {
-    type UserEvent = std::convert::Infallible;
+struct GraphicsState {
+    render_pipeline: wgpu::RenderPipeline,
+}
 
-    fn window_attrs() -> winit::window::WindowAttributes {
-        #[allow(unused_mut)]
-        let mut window_attrs = winit::window::WindowAttributes::default();
-        #[cfg(target_arch = "wasm32")]
-        {
-            use winit::platform::web::WindowAttributesExtWebSys as _;
-            window_attrs = window_attrs.with_append(true);
-        }
-        window_attrs = window_attrs.with_inner_size(winit::dpi::PhysicalSize::new(1024, 1024));
-        window_attrs
-    }
-
-    fn new(
-        gfx: &wginit::Graphics,
-        _user_event_sender: wginit::UserEventSender<Self::UserEvent>,
-    ) -> Self {
+impl GraphicsState {
+    fn new(gfx: &wginit::Graphics) -> Self {
         let shader = gfx
             .device
             .create_shader_module(wgpu::ShaderModuleDescriptor {
@@ -76,8 +59,37 @@ impl wginit::Application for Application {
                 }),
         }
     }
+}
+
+struct Application {
+    gfx_state: Option<GraphicsState>,
+}
+
+impl wginit::Application for Application {
+    type UserEvent = std::convert::Infallible;
+
+    fn window_attrs() -> winit::window::WindowAttributes {
+        #[allow(unused_mut)]
+        let mut window_attrs = winit::window::WindowAttributes::default();
+        #[cfg(target_arch = "wasm32")]
+        {
+            use winit::platform::web::WindowAttributesExtWebSys as _;
+            window_attrs = window_attrs.with_append(true);
+        }
+        window_attrs = window_attrs.with_inner_size(winit::dpi::PhysicalSize::new(1024, 1024));
+        window_attrs
+    }
+
+    fn new(_user_event_sender: wginit::UserEventSender<Self::UserEvent>) -> Self {
+        Self { gfx_state: None }
+    }
+
+    fn resumed(&mut self, gfx: &wginit::Graphics) {
+        self.gfx_state = Some(GraphicsState::new(gfx));
+    }
 
     fn redraw(&mut self, gfx: &wginit::Graphics) {
+        let gfx_state = self.gfx_state.as_ref().unwrap();
         let frame = gfx.surface.get_current_texture().unwrap();
         let view = frame
             .texture
@@ -100,7 +112,7 @@ impl wginit::Application for Application {
                 timestamp_writes: None,
                 occlusion_query_set: None,
             });
-            rpass.set_pipeline(&self.render_pipeline);
+            rpass.set_pipeline(&gfx_state.render_pipeline);
             rpass.draw(0..3, 0..1);
         }
 
@@ -113,5 +125,5 @@ impl wginit::Application for Application {
 }
 
 fn main() {
-    wginit::run::<Application>();
+    wginit::run::<Application>().unwrap();
 }

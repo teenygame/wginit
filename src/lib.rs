@@ -1,18 +1,20 @@
 //! wginit is a simple framework for initializing wgpu + winit.
+//!
+//! It only handles one device.
 
 /// The graphics device state.
 ///
 /// It contains all wgpu and winit state.
 pub struct Graphics<'a> {
-    /// The current [`wgpu::Device`].
-    pub window: &'a winit::window::Window,
-    /// The current [`wgpu::Queue`].
-    pub device: &'a wgpu::Device,
-    /// The current [`wgpu::Adapter`].
-    pub queue: &'a wgpu::Queue,
-    /// The current [`wgpu::Surface`].
-    pub adapter: &'a wgpu::Adapter,
     /// The current [`winit::window::Window`].
+    pub window: &'a winit::window::Window,
+    /// The current [`wgpu::Device`].
+    pub device: &'a wgpu::Device,
+    /// The current [`wgpu::Queue`].
+    pub queue: &'a wgpu::Queue,
+    /// The current [`wgpu::Adapter`].
+    pub adapter: &'a wgpu::Adapter,
+    /// The current [`wgpu::Surface`].
     pub surface: &'a wgpu::Surface<'static>,
 }
 

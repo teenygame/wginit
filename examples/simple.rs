@@ -88,6 +88,10 @@ impl wginit::Application for Application {
         self.gfx_state = Some(GraphicsState::new(gfx));
     }
 
+    fn suspended(&mut self) {
+        self.gfx_state = None;
+    }
+
     fn redraw(&mut self, gfx: &wginit::Graphics) {
         let gfx_state = self.gfx_state.as_ref().unwrap();
         let frame = gfx.surface.get_current_texture().unwrap();

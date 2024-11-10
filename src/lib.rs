@@ -14,7 +14,6 @@ pub struct Graphics {
     pub adapter: wgpu::Adapter,
     /// The current [`winit::window::Window`].
     pub surface: wgpu::Surface<'static>,
-    surface_config: wgpu::SurfaceConfiguration,
 }
 
 async fn new_wgpu_instance() -> wgpu::Instance {
@@ -37,6 +36,17 @@ async fn new_wgpu_instance() -> wgpu::Instance {
     } else {
         instance
     }
+}
+
+fn make_surface_configuration(
+    surface: &wgpu::Surface,
+    adapter: &wgpu::Adapter,
+    size: winit::dpi::PhysicalSize<u32>,
+) -> Option<wgpu::SurfaceConfiguration> {
+    let mut surface_config =
+        surface.get_default_config(&adapter, size.width.max(1), size.height.max(1))?;
+    surface_config.present_mode = wgpu::PresentMode::AutoVsync;
+    Some(surface_config)
 }
 
 impl Graphics {
@@ -62,15 +72,10 @@ impl Graphics {
             .await
             .expect("failed to create device");
 
-        let mut size = window.inner_size();
-        size.width = size.width.max(1);
-        size.height = size.height.max(1);
-
-        let mut surface_config = surface
-            .get_default_config(&adapter, size.width, size.height)
-            .unwrap();
-        surface_config.present_mode = wgpu::PresentMode::AutoVsync;
-        surface.configure(&device, &surface_config);
+        surface.configure(
+            &device,
+            &make_surface_configuration(&surface, &adapter, window.inner_size()).unwrap(),
+        );
 
         Self {
             window,
@@ -78,7 +83,6 @@ impl Graphics {
             queue,
             adapter,
             surface,
-            surface_config,
         }
     }
 }
@@ -169,9 +173,10 @@ where
 
         match event {
             winit::event::WindowEvent::Resized(size) => {
-                gfx.surface_config.width = size.width.max(1);
-                gfx.surface_config.height = size.height.max(1);
-                gfx.surface.configure(&gfx.device, &gfx.surface_config);
+                gfx.surface.configure(
+                    &gfx.device,
+                    &make_surface_configuration(&gfx.surface, &gfx.adapter, size).unwrap(),
+                );
                 gfx.window.request_redraw();
             }
             winit::event::WindowEvent::RedrawRequested => {

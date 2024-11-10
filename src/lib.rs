@@ -3,17 +3,69 @@
 /// The graphics device state.
 ///
 /// It contains all wgpu and winit state.
-pub struct Graphics {
+pub struct Graphics<'a> {
     /// The current [`wgpu::Device`].
-    pub window: std::sync::Arc<winit::window::Window>,
+    pub window: &'a winit::window::Window,
     /// The current [`wgpu::Queue`].
-    pub device: wgpu::Device,
+    pub device: &'a wgpu::Device,
     /// The current [`wgpu::Adapter`].
-    pub queue: wgpu::Queue,
+    pub queue: &'a wgpu::Queue,
     /// The current [`wgpu::Surface`].
-    pub adapter: wgpu::Adapter,
+    pub adapter: &'a wgpu::Adapter,
     /// The current [`winit::window::Window`].
-    pub surface: wgpu::Surface<'static>,
+    pub surface: &'a wgpu::Surface<'static>,
+}
+
+impl<'a> Graphics<'a> {
+    fn new(window: &'a winit::window::Window, wgpu: &'a WgpuState) -> Self {
+        Self {
+            window: &window,
+            device: &wgpu.device,
+            queue: &wgpu.queue,
+            adapter: &wgpu.adapter,
+            surface: &wgpu.surface,
+        }
+    }
+}
+
+struct WgpuState {
+    device: wgpu::Device,
+    queue: wgpu::Queue,
+    adapter: wgpu::Adapter,
+    surface: wgpu::Surface<'static>,
+}
+
+impl WgpuState {
+    async fn new<A>(window: std::sync::Arc<winit::window::Window>) -> Self
+    where
+        A: Application,
+    {
+        let instance = new_wgpu_instance().await;
+
+        let surface = instance.create_surface(window.clone()).unwrap();
+
+        let adapter = instance
+            .request_adapter(&A::request_adapter_options(&surface))
+            .await
+            .expect("failed to find an appropriate adapter");
+
+        let (device, queue) = adapter
+            .request_device(&A::device_descriptor(&adapter), None)
+            .await
+            .expect("failed to create device");
+
+        surface.configure(
+            &device,
+            &A::surface_configuration(&surface, &adapter, window.inner_size()),
+        );
+
+        Self {
+            device,
+            queue,
+            adapter,
+            surface,
+        }
+    }
 }
 
 async fn new_wgpu_instance() -> wgpu::Instance {
@@ -38,44 +90,8 @@ async fn new_wgpu_instance() -> wgpu::Instance {
     }
 }
 
-impl Graphics {
-    async fn new<A>(window: winit::window::Window) -> Self
-    where
-        A: Application,
-    {
-        let window = std::sync::Arc::new(window);
-
-        let instance = new_wgpu_instance().await;
-
-        let surface = instance.create_surface(window.clone()).unwrap();
-
-        let adapter = instance
-            .request_adapter(&A::request_adapter_options(&surface))
-            .await
-            .expect("failed to find an appropriate adapter");
-
-        let (device, queue) = adapter
-            .request_device(&A::device_descriptor(&adapter), None)
-            .await
-            .expect("failed to create device");
-
-        surface.configure(
-            &device,
-            &A::surface_configuration(&surface, &adapter, window.inner_size()),
-        );
-
-        Self {
-            window,
-            device,
-            queue,
-            adapter,
-            surface,
-        }
-    }
-}
-
 enum UserEvent<C> {
-    GraphicsReady(Graphics),
+    WgpuReady(WgpuState),
     Custom(C),
 }
 
@@ -105,7 +121,8 @@ where
     A: Application,
 {
     app: A,
-    gfx: Option<Graphics>,
+    window: Option<std::sync::Arc<winit::window::Window>>,
+    wgpu: Option<WgpuState>,
     event_loop_proxy: winit::event_loop::EventLoopProxy<UserEvent<A::UserEvent>>,
 }
 
@@ -116,7 +133,8 @@ where
     fn new(app: A, event_loop: &winit::event_loop::EventLoop<UserEvent<A::UserEvent>>) -> Self {
         Self {
             app,
-            gfx: None,
+            window: None,
+            wgpu: None,
             event_loop_proxy: event_loop.create_proxy(),
         }
     }
@@ -127,14 +145,21 @@ where
     A: Application,
 {
     fn resumed(&mut self, event_loop: &winit::event_loop::ActiveEventLoop) {
-        let window = event_loop
-            .create_window(A::window_attrs())
-            .expect("failed to create window");
+        let window = self
+            .window
+            .get_or_insert_with(|| {
+                std::sync::Arc::new(
+                    event_loop
+                        .create_window(A::window_attrs())
+                        .expect("failed to create window"),
+                )
+            })
+            .clone();
 
         let event_loop_proxy = self.event_loop_proxy.clone();
         let fut = async move {
             assert!(event_loop_proxy
-                .send_event(UserEvent::GraphicsReady(Graphics::new::<A>(window).await))
+                .send_event(UserEvent::WgpuReady(WgpuState::new::<A>(window).await))
                 .is_ok());
         };
 
@@ -155,20 +180,20 @@ where
         _window_id: winit::window::WindowId,
         event: winit::event::WindowEvent,
     ) {
-        let Some(gfx) = &mut self.gfx else {
+        let (Some(window), Some(wgpu)) = (&self.window, &self.wgpu) else {
             return;
         };
 
         match event {
             winit::event::WindowEvent::Resized(size) => {
-                gfx.surface.configure(
-                    &gfx.device,
-                    &A::surface_configuration(&gfx.surface, &gfx.adapter, size),
+                wgpu.surface.configure(
+                    &wgpu.device,
+                    &A::surface_configuration(&wgpu.surface, &wgpu.adapter, size),
                 );
-                gfx.window.request_redraw();
+                window.request_redraw();
             }
             winit::event::WindowEvent::RedrawRequested => {
-                self.app.redraw(gfx);
+                self.app.redraw(&Graphics::new(window, wgpu));
             }
             winit::event::WindowEvent::CloseRequested => {
                 event_loop.exit();
@@ -185,10 +210,12 @@ where
         event: UserEvent<A::UserEvent>,
     ) {
         match event {
-            UserEvent::GraphicsReady(gfx) => {
-                gfx.window.request_redraw();
-                self.app.resumed(&gfx);
-                self.gfx = Some(gfx);
+            UserEvent::WgpuReady(wgpu) => {
+                // We can just unwrap here because if we're getting the wgpu state we can safely assume the window is already initialized, otherwise we have bigger problems.
+                let window = self.window.as_mut().unwrap();
+                window.request_redraw();
+                self.app.resumed(&Graphics::new(window, &wgpu));
+                self.wgpu = Some(wgpu);
             }
             UserEvent::Custom(e) => {
                 self.app.user_event(e);

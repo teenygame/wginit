@@ -291,28 +291,13 @@ where
 
 /// Runs the application.
 ///
-/// This should be the only function called in your `main`. It will:
-/// - Set up logging (and panic handling for WASM).
-/// - Create the event loop.
-/// - Starts the event loop and hands over control.
-pub fn run<A>()
+/// This will set up the event loop and run the application.
+pub fn run<A>() -> Result<(), winit::error::EventLoopError>
 where
     A: Application,
 {
-    #[cfg(not(target_arch = "wasm32"))]
-    {
-        env_logger::init();
-    }
-
-    #[cfg(target_arch = "wasm32")]
-    {
-        console_error_panic_hook::set_once();
-        wasm_logger::init(wasm_logger::Config::default());
-    }
-
-    let event_loop = winit::event_loop::EventLoop::with_user_event()
-        .build()
-        .unwrap();
+    let event_loop = winit::event_loop::EventLoop::with_user_event().build()?;
     let mut app = ApplicationHandler::<A>::new(&event_loop);
-    event_loop.run_app(&mut app).unwrap();
+    event_loop.run_app(&mut app)?;
+    Ok(())
 }

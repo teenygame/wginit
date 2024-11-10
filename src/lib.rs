@@ -39,7 +39,7 @@ async fn new_wgpu_instance() -> wgpu::Instance {
 }
 
 impl Graphics {
-    pub(crate) async fn new<A>(window: winit::window::Window) -> Self
+    async fn new<A>(window: winit::window::Window) -> Self
     where
         A: Application,
     {

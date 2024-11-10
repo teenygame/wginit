@@ -46,13 +46,11 @@ impl Graphics {
         let window = std::sync::Arc::new(window);
 
         let instance = new_wgpu_instance().await;
+
         let surface = instance.create_surface(window.clone()).unwrap();
 
         let adapter = instance
-            .request_adapter(&wgpu::RequestAdapterOptions {
-                compatible_surface: Some(&surface),
-                ..Default::default()
-            })
+            .request_adapter(&A::request_adapter_options(&surface))
             .await
             .expect("failed to find an appropriate adapter");
 
@@ -219,6 +217,7 @@ where
 /// You may override various aspects of winit/wgpu initialization, e.g.:
 /// - [`wgpu::DeviceDescriptor`] (via [`Application::device_descriptor`])
 /// - [`wgpu::SurfaceConfiguration`] (via [`Application::surface_configuration`])
+/// - [`wgpu::RequestAdapterOptions`] (via [`Application::request_adapter_options`])
 /// - [`winit::window::WindowAttributes`] (via [`Application::window_attrs`])
 ///
 /// Additionally, events can be delivered to the event loop via the [`UserEventSender`] passed to [`Application::new`]. If used, they can be handled via [`Application::user_event`].
@@ -266,6 +265,16 @@ where
         surface
             .get_default_config(&adapter, size.width.max(1), size.height.max(1))
             .unwrap()
+    }
+
+    /// Creates the [`wgpu::RequestAdapterOptions`] to request a [`wgpu::Adapter`] with.
+    fn request_adapter_options<'a, 'b>(
+        surface: &'a wgpu::Surface<'b>,
+    ) -> wgpu::RequestAdapterOptions<'a, 'b> {
+        wgpu::RequestAdapterOptions {
+            compatible_surface: Some(surface),
+            ..Default::default()
+        }
     }
 
     /// Creates a new instance of this application.

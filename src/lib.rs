@@ -38,17 +38,6 @@ async fn new_wgpu_instance() -> wgpu::Instance {
     }
 }
 
-fn make_surface_configuration(
-    surface: &wgpu::Surface,
-    adapter: &wgpu::Adapter,
-    size: winit::dpi::PhysicalSize<u32>,
-) -> Option<wgpu::SurfaceConfiguration> {
-    let mut surface_config =
-        surface.get_default_config(&adapter, size.width.max(1), size.height.max(1))?;
-    surface_config.present_mode = wgpu::PresentMode::AutoVsync;
-    Some(surface_config)
-}
-
 impl Graphics {
     pub(crate) async fn new<A>(window: winit::window::Window) -> Self
     where
@@ -74,7 +63,7 @@ impl Graphics {
 
         surface.configure(
             &device,
-            &make_surface_configuration(&surface, &adapter, window.inner_size()).unwrap(),
+            &A::surface_configuration(&surface, &adapter, window.inner_size()),
         );
 
         Self {
@@ -175,7 +164,7 @@ where
             winit::event::WindowEvent::Resized(size) => {
                 gfx.surface.configure(
                     &gfx.device,
-                    &make_surface_configuration(&gfx.surface, &gfx.adapter, size).unwrap(),
+                    &A::surface_configuration(&gfx.surface, &gfx.adapter, size),
                 );
                 gfx.window.request_redraw();
             }
@@ -247,7 +236,7 @@ where
         window_attrs
     }
 
-    /// Creates the device descriptor to create a [`wgpu::Device`] with.
+    /// Creates the [`wgpu::DeviceDescriptor`] to create a [`wgpu::Device`] with.
     ///
     /// The defaults are compatible with WebGL.
     fn device_descriptor(adapter: &wgpu::Adapter) -> wgpu::DeviceDescriptor {
@@ -257,6 +246,19 @@ where
             required_features: wgpu::Features::default(),
             ..Default::default()
         }
+    }
+
+    /// Creates the [`wgpu::SurfaceConfiguration`] to configure a [`wgpu::Surface`] with.
+    ///
+    /// Note that the input size may be zero and it is up to the implementor to ensure a non-zero size on the surface configuration.
+    fn surface_configuration(
+        surface: &wgpu::Surface,
+        adapter: &wgpu::Adapter,
+        size: winit::dpi::PhysicalSize<u32>,
+    ) -> wgpu::SurfaceConfiguration {
+        surface
+            .get_default_config(&adapter, size.width.max(1), size.height.max(1))
+            .unwrap()
     }
 
     /// Creates a new instance of this application.

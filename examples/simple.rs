@@ -17,22 +17,22 @@ struct GraphicsState {
 }
 
 impl GraphicsState {
-    fn new(gfx: &wginit::Graphics) -> Self {
-        let shader = gfx
+    fn new(wgpu: &wginit::Wgpu) -> Self {
+        let shader = wgpu
             .device
             .create_shader_module(wgpu::ShaderModuleDescriptor {
                 label: None,
                 source: wgpu::ShaderSource::Wgsl(std::borrow::Cow::Borrowed(SHADER)),
             });
 
-        let swapchain_format = gfx.surface.get_capabilities(&gfx.adapter).formats[0];
+        let swapchain_format = wgpu.surface.get_capabilities(&wgpu.adapter).formats[0];
 
         Self {
-            render_pipeline: gfx
+            render_pipeline: wgpu
                 .device
                 .create_render_pipeline(&wgpu::RenderPipelineDescriptor {
                     label: None,
-                    layout: Some(&gfx.device.create_pipeline_layout(
+                    layout: Some(&wgpu.device.create_pipeline_layout(
                         &wgpu::PipelineLayoutDescriptor {
                             label: None,
                             bind_group_layouts: &[],
@@ -65,7 +65,7 @@ struct Application {
     gfx_state: Option<GraphicsState>,
 }
 
-impl wginit::Application for Application {
+impl wginit::ApplicationHandler for Application {
     type UserEvent = std::convert::Infallible;
 
     fn window_attrs() -> winit::window::WindowAttributes {
@@ -84,50 +84,72 @@ impl wginit::Application for Application {
         Self { gfx_state: None }
     }
 
-    fn resumed(&mut self, gfx: &wginit::Graphics) {
-        self.gfx_state = Some(GraphicsState::new(gfx));
+    fn resumed(&mut self, ctxt: &wginit::Context) {
+        self.gfx_state = Some(GraphicsState::new(ctxt.wgpu.unwrap()));
     }
 
-    fn suspended(&mut self) {
+    fn suspended(&mut self, _ctxt: &wginit::Context) {
         self.gfx_state = None;
     }
 
-    fn redraw(&mut self, gfx: &wginit::Graphics) {
-        let gfx_state = self.gfx_state.as_ref().unwrap();
-        let frame = gfx.surface.get_current_texture().unwrap();
-        let view = frame
-            .texture
-            .create_view(&wgpu::TextureViewDescriptor::default());
-        let mut encoder = gfx
-            .device
-            .create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
-        {
-            let mut rpass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                label: None,
-                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                    view: &view,
-                    resolve_target: None,
-                    ops: wgpu::Operations {
-                        load: wgpu::LoadOp::Clear(wgpu::Color::GREEN),
-                        store: wgpu::StoreOp::Store,
-                    },
-                })],
-                depth_stencil_attachment: None,
-                timestamp_writes: None,
-                occlusion_query_set: None,
-            });
-            rpass.set_pipeline(&gfx_state.render_pipeline);
-            rpass.draw(0..3, 0..1);
+    fn window_event(&mut self, ctxt: &wginit::Context, event: winit::event::WindowEvent) {
+        match event {
+            winit::event::WindowEvent::RedrawRequested => {
+                let gfx_state = self.gfx_state.as_ref().unwrap();
+                let wgpu = ctxt.wgpu.unwrap();
+                let window = ctxt.window.unwrap();
+
+                let frame = wgpu.surface.get_current_texture().unwrap();
+                let view = frame
+                    .texture
+                    .create_view(&wgpu::TextureViewDescriptor::default());
+                let mut encoder = wgpu
+                    .device
+                    .create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
+                {
+                    let mut rpass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                        label: None,
+                        color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                            view: &view,
+                            resolve_target: None,
+                            ops: wgpu::Operations {
+                                load: wgpu::LoadOp::Clear(wgpu::Color::GREEN),
+                                store: wgpu::StoreOp::Store,
+                            },
+                        })],
+                        depth_stencil_attachment: None,
+                        timestamp_writes: None,
+                        occlusion_query_set: None,
+                    });
+                    rpass.set_pipeline(&gfx_state.render_pipeline);
+                    rpass.draw(0..3, 0..1);
+                }
+
+                wgpu.queue.submit(Some(encoder.finish()));
+
+                window.pre_present_notify();
+                frame.present();
+                window.request_redraw();
+            }
+            winit::event::WindowEvent::CloseRequested => {
+                ctxt.event_loop.exit();
+            }
+            _ => {}
         }
-
-        gfx.queue.submit(Some(encoder.finish()));
-
-        gfx.window.pre_present_notify();
-        frame.present();
-        gfx.window.request_redraw();
     }
 }
 
 fn main() {
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        env_logger::init();
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    {
+        console_error_panic_hook::set_once();
+        wasm_logger::init(wasm_logger::Config::default());
+    }
+
     wginit::run::<Application>().unwrap();
 }

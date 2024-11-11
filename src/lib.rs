@@ -2,45 +2,56 @@
 //!
 //! It only handles one device.
 
-/// The graphics device state.
+/// A context struct passed to application handlers while the application is not suspended.
 ///
 /// It contains all wgpu and winit state.
-pub struct Graphics<'a> {
-    /// The current [`winit::window::Window`].
-    pub window: &'a winit::window::Window,
-    /// The current [`wgpu::Device`].
-    pub device: &'a wgpu::Device,
-    /// The current [`wgpu::Queue`].
-    pub queue: &'a wgpu::Queue,
-    /// The current [`wgpu::Adapter`].
-    pub adapter: &'a wgpu::Adapter,
-    /// The current [`wgpu::Surface`].
-    pub surface: &'a wgpu::Surface<'static>,
+pub struct Context<'a> {
+    /// The current [`winit::event_loop::ActiveEventLoop`].
+    ///
+    /// <section class="warning">
+    ///
+    /// You should **not** call [`winit::event_loop::ActiveEventLoop::create_window`] as wginit does not support multiple windows.
+    ///
+    /// </section>
+    pub event_loop: &'a winit::event_loop::ActiveEventLoop,
+
+    /// The current [`winit::window::Window`]. This may be [`None`] if the window is not available yet.
+    pub window: Option<&'a winit::window::Window>,
+
+    /// The current wgpu state. This may be [`None`] if the wgpu state is not available yet, or was destroyed.
+    pub wgpu: Option<&'a Wgpu>,
 }
 
-impl<'a> Graphics<'a> {
-    fn new(window: &'a winit::window::Window, wgpu: &'a WgpuState) -> Self {
+impl<'a> Context<'a> {
+    fn new(
+        event_loop: &'a winit::event_loop::ActiveEventLoop,
+        window: Option<&'a winit::window::Window>,
+        wgpu: Option<&'a Wgpu>,
+    ) -> Self {
         Self {
-            window: &window,
-            device: &wgpu.device,
-            queue: &wgpu.queue,
-            adapter: &wgpu.adapter,
-            surface: &wgpu.surface,
+            event_loop,
+            window,
+            wgpu,
         }
     }
 }
 
-struct WgpuState {
-    device: wgpu::Device,
-    queue: wgpu::Queue,
-    adapter: wgpu::Adapter,
-    surface: wgpu::Surface<'static>,
+/// The current wgpu state.
+pub struct Wgpu {
+    /// The current [`wgpu::Device`].
+    pub device: wgpu::Device,
+    /// The current [`wgpu::Queue`].
+    pub queue: wgpu::Queue,
+    /// The current [`wgpu::Adapter`].
+    pub adapter: wgpu::Adapter,
+    /// The current [`wgpu::Surface`].
+    pub surface: wgpu::Surface<'static>,
 }
 
-impl WgpuState {
+impl Wgpu {
     async fn new<A>(window: std::sync::Arc<winit::window::Window>) -> Self
     where
-        A: Application,
+        A: ApplicationHandler,
     {
         let instance = new_wgpu_instance().await;
 
@@ -93,7 +104,7 @@ async fn new_wgpu_instance() -> wgpu::Instance {
 }
 
 enum UserEvent<C> {
-    WgpuReady(WgpuState),
+    WgpuReady(Wgpu),
     Custom(C),
 }
 
@@ -118,19 +129,19 @@ where
     }
 }
 
-struct ApplicationHandler<A>
+struct WinitApplicationHandler<A>
 where
-    A: Application,
+    A: ApplicationHandler,
 {
     app: A,
     window: Option<std::sync::Arc<winit::window::Window>>,
-    wgpu: Option<WgpuState>,
+    wgpu: Option<Wgpu>,
     event_loop_proxy: winit::event_loop::EventLoopProxy<UserEvent<A::UserEvent>>,
 }
 
-impl<A> ApplicationHandler<A>
+impl<A> WinitApplicationHandler<A>
 where
-    A: Application,
+    A: ApplicationHandler,
 {
     fn new(app: A, event_loop: &winit::event_loop::EventLoop<UserEvent<A::UserEvent>>) -> Self {
         Self {
@@ -142,9 +153,10 @@ where
     }
 }
 
-impl<A> winit::application::ApplicationHandler<UserEvent<A::UserEvent>> for ApplicationHandler<A>
+impl<A> winit::application::ApplicationHandler<UserEvent<A::UserEvent>>
+    for WinitApplicationHandler<A>
 where
-    A: Application,
+    A: ApplicationHandler,
 {
     fn resumed(&mut self, event_loop: &winit::event_loop::ActiveEventLoop) {
         let window = self
@@ -161,7 +173,7 @@ where
         let event_loop_proxy = self.event_loop_proxy.clone();
         let fut = async move {
             assert!(event_loop_proxy
-                .send_event(UserEvent::WgpuReady(WgpuState::new::<A>(window).await))
+                .send_event(UserEvent::WgpuReady(Wgpu::new::<A>(window).await))
                 .is_ok());
         };
 
@@ -172,8 +184,45 @@ where
         wasm_bindgen_futures::spawn_local(fut);
     }
 
-    fn suspended(&mut self, _event_loop: &winit::event_loop::ActiveEventLoop) {
-        self.app.suspended();
+    fn suspended(&mut self, event_loop: &winit::event_loop::ActiveEventLoop) {
+        self.wgpu = None;
+        self.app.suspended(&Context::new(
+            event_loop,
+            self.window.as_ref().map(|window| window.as_ref()),
+            self.wgpu.as_ref(),
+        ));
+    }
+
+    fn exiting(&mut self, event_loop: &winit::event_loop::ActiveEventLoop) {
+        self.app.exiting(&Context::new(
+            event_loop,
+            self.window.as_ref().map(|window| window.as_ref()),
+            self.wgpu.as_ref(),
+        ));
+    }
+
+    fn memory_warning(&mut self, event_loop: &winit::event_loop::ActiveEventLoop) {
+        self.app.memory_warning(&Context::new(
+            event_loop,
+            self.window.as_ref().map(|window| window.as_ref()),
+            self.wgpu.as_ref(),
+        ));
+    }
+
+    fn new_events(
+        &mut self,
+        event_loop: &winit::event_loop::ActiveEventLoop,
+        start_cause: winit::event::StartCause,
+    ) {
+        self.app.new_events(event_loop, start_cause);
+    }
+
+    fn about_to_wait(&mut self, event_loop: &winit::event_loop::ActiveEventLoop) {
+        self.app.about_to_wait(&Context::new(
+            event_loop,
+            self.window.as_ref().map(|window| window.as_ref()),
+            self.wgpu.as_ref(),
+        ));
     }
 
     fn window_event(
@@ -182,73 +231,85 @@ where
         _window_id: winit::window::WindowId,
         event: winit::event::WindowEvent,
     ) {
-        let (Some(window), Some(wgpu)) = (&self.window, &self.wgpu) else {
-            return;
-        };
-
         match event {
             winit::event::WindowEvent::Resized(size) => {
+                let window = self.window.as_ref().unwrap();
+                let Some(wgpu) = self.wgpu.as_ref() else {
+                    return;
+                };
                 wgpu.surface.configure(
                     &wgpu.device,
                     &A::surface_configuration(&wgpu.surface, &wgpu.adapter, size),
                 );
                 window.request_redraw();
             }
-            winit::event::WindowEvent::RedrawRequested => {
-                self.app.redraw(&Graphics::new(window, wgpu));
-            }
-            winit::event::WindowEvent::CloseRequested => {
-                event_loop.exit();
-            }
             _ => {}
         };
 
-        self.app.window_event(event);
+        self.app.window_event(
+            &Context::new(
+                event_loop,
+                self.window.as_ref().map(|window| window.as_ref()),
+                self.wgpu.as_ref(),
+            ),
+            event,
+        );
     }
 
     fn user_event(
         &mut self,
-        _event_loop: &winit::event_loop::ActiveEventLoop,
+        event_loop: &winit::event_loop::ActiveEventLoop,
         event: UserEvent<A::UserEvent>,
     ) {
         match event {
             UserEvent::WgpuReady(wgpu) => {
                 // We can just unwrap here because if we're getting the wgpu state we can safely assume the window is already initialized, otherwise we have bigger problems.
-                let window = self.window.as_mut().unwrap();
+                let window = self.window.as_ref().unwrap();
                 window.request_redraw();
-                self.app.resumed(&Graphics::new(window, &wgpu));
                 self.wgpu = Some(wgpu);
+                self.app.resumed(&Context::new(
+                    event_loop,
+                    Some(window.as_ref()),
+                    self.wgpu.as_ref(),
+                ));
             }
             UserEvent::Custom(e) => {
-                self.app.user_event(e);
+                self.app.user_event(
+                    &Context::new(
+                        event_loop,
+                        self.window.as_ref().map(|window| window.as_ref()),
+                        self.wgpu.as_ref(),
+                    ),
+                    e,
+                );
             }
         }
     }
+
+    fn device_event(
+        &mut self,
+        event_loop: &winit::event_loop::ActiveEventLoop,
+        device_id: winit::event::DeviceId,
+        event: winit::event::DeviceEvent,
+    ) {
+        self.app.device_event(
+            &Context::new(
+                event_loop,
+                self.window.as_ref().map(|window| window.as_ref()),
+                self.wgpu.as_ref(),
+            ),
+            device_id,
+            event,
+        );
+    }
 }
 
-/// The application.
+/// The application event handler.
 ///
-/// You should implement all the methods in this trait.
+/// Most of these methods reflect those in [`winit::application::ApplicationHandler`].
 ///
-/// The following is handled for you:
-/// - Window creation
-/// - Surface resizing
-/// - Window closing
-///
-/// You should handle the following yourself:
-/// - Inputs (via [`Application::window_event`])
-/// - Drawing (via [`Application::redraw`])
-/// - Resumption (via [`Application::resumed`])
-/// - Suspension (via [`Application::suspended`])
-///
-/// You may override various aspects of winit/wgpu initialization, e.g.:
-/// - [`wgpu::DeviceDescriptor`] (via [`Application::device_descriptor`])
-/// - [`wgpu::SurfaceConfiguration`] (via [`Application::surface_configuration`])
-/// - [`wgpu::RequestAdapterOptions`] (via [`Application::request_adapter_options`])
-/// - [`winit::window::WindowAttributes`] (via [`Application::window_attrs`])
-///
-/// Additionally, events can be delivered to the event loop via the [`UserEventSender`] passed to [`Application::new`]. If used, they can be handled via [`Application::user_event`].
-pub trait Application
+/// Additionally, events can be delivered to the event loop via the [`UserEventSender`] passed to [`ApplicationHandler::new`]. If used, they can be handled via [`ApplicationHandler::user_event`].
+pub trait ApplicationHandler
 where
     Self::UserEvent: 'static,
 {
@@ -309,29 +370,78 @@ where
 
     /// Handles application resumption.
     ///
-    /// This function will be called when the graphics context is initialized.
-    fn resumed(&mut self, gfx: &Graphics) {
-        _ = gfx;
+    /// See [`winit::application::ApplicationHandler::resumed`] for more details.
+    fn resumed(&mut self, ctxt: &Context) {
+        let _ = ctxt;
+    }
+
+    /// Handles application memory warnings.
+    ///
+    /// See [`winit::application::ApplicationHandler::memory_warning`] for more details.
+    fn memory_warning(&mut self, ctxt: &Context) {
+        let _ = ctxt;
+    }
+
+    /// Handles when the application receives new events ready to be processed.
+    ///
+    /// Note that because this is called before the window or wgpu state is initialized, it only receives [`winit::event_loop::ActiveEventLoop`].
+    ///
+    /// See [`winit::application::ApplicationHandler::new_events`] for more details.
+    fn new_events(
+        &mut self,
+        event_loop: &winit::event_loop::ActiveEventLoop,
+        start_cause: winit::event::StartCause,
+    ) {
+        let _ = (event_loop, start_cause);
+    }
+
+    /// Handles when the application is about to block and wait for new events.
+    ///
+    /// See [`winit::application::ApplicationHandler::about_to_wait`] for more details.
+    fn about_to_wait(&mut self, ctxt: &Context) {
+        let _ = ctxt;
     }
 
     /// Handles application suspension.
-    fn suspended(&mut self) {}
+    /// ///
+    /// See [`winit::application::ApplicationHandler::suspended`] for more details.
+    fn suspended(&mut self, ctxt: &Context) {
+        let _ = ctxt;
+    }
 
-    /// Processes a redraw request.
-    fn redraw(&mut self, gfx: &Graphics);
+    /// Handles application exiting.
+    ///
+    /// See [`winit::application::ApplicationHandler::exiting`] for more details.
+    fn exiting(&mut self, ctxt: &Context) {
+        let _ = ctxt;
+    }
 
     /// Handles a window event.
     ///
-    /// Note that on [`winit::event::WindowEvent::RedrawRequested`], both this and [`Application::redraw`] will be called, but [`Graphics`] will only be available from [`Application::redraw`].
-    fn window_event(&mut self, event: winit::event::WindowEvent) {
-        _ = event;
+    /// wginit will handle [`winit::event::WindowEvent::Resized`] to update the size of the wgpu surface. You must handle all other events yourself.
+    ///
+    /// See [`winit::application::ApplicationHandler::window_event`] for more details.
+    fn window_event(&mut self, ctxt: &Context, event: winit::event::WindowEvent) {
+        let _ = (ctxt, event);
     }
 
     /// Handles a user event.
     ///
     /// User events can be sent using [`UserEventSender`].
-    fn user_event(&mut self, event: Self::UserEvent) {
-        _ = event;
+    fn user_event(&mut self, ctxt: &Context, event: Self::UserEvent) {
+        let _ = (ctxt, event);
+    }
+
+    /// Handles a device event.
+    ///
+    /// See [`winit::application::ApplicationHandler::device_event`] for more details.
+    fn device_event(
+        &mut self,
+        ctxt: &Context,
+        device_id: winit::event::DeviceId,
+        event: winit::event::DeviceEvent,
+    ) {
+        let _ = (ctxt, device_id, event);
     }
 }
 
@@ -340,10 +450,10 @@ where
 /// This will set up the event loop and run the application.
 pub fn run<A>() -> Result<(), winit::error::EventLoopError>
 where
-    A: Application,
+    A: ApplicationHandler,
 {
     let event_loop = winit::event_loop::EventLoop::with_user_event().build()?;
-    let mut app = ApplicationHandler::new(
+    let mut app = WinitApplicationHandler::new(
         A::new(UserEventSender(event_loop.create_proxy())),
         &event_loop,
     );

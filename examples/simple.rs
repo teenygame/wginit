@@ -95,9 +95,7 @@ impl wginit::ApplicationHandler for Application {
     fn window_event(&mut self, ctxt: &wginit::Context, event: winit::event::WindowEvent) {
         match event {
             winit::event::WindowEvent::RedrawRequested => {
-                let Some(gfx_state) = &self.gfx_state else {
-                    return;
-                };
+                let gfx_state = self.gfx_state.as_ref().unwrap();
                 let wgpu = ctxt.wgpu.unwrap();
                 let window = ctxt.window.unwrap();
 
@@ -142,16 +140,5 @@ impl wginit::ApplicationHandler for Application {
 }
 
 fn main() {
-    #[cfg(not(target_arch = "wasm32"))]
-    {
-        env_logger::init();
-    }
-
-    #[cfg(target_arch = "wasm32")]
-    {
-        console_error_panic_hook::set_once();
-        wasm_logger::init(wasm_logger::Config::default());
-    }
-
     wginit::run::<Application>().unwrap();
 }

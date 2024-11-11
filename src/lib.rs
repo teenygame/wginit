@@ -265,13 +265,13 @@ where
             UserEvent::WgpuReady(wgpu) => {
                 // We can just unwrap here because if we're getting the wgpu state we can safely assume the window is already initialized, otherwise we have bigger problems.
                 let window = self.window.as_ref().unwrap();
-                window.request_redraw();
                 self.wgpu = Some(wgpu);
                 self.app.resumed(&Context::new(
                     event_loop,
                     Some(window.as_ref()),
                     self.wgpu.as_ref(),
                 ));
+                window.request_redraw();
             }
             UserEvent::Custom(e) => {
                 self.app.user_event(

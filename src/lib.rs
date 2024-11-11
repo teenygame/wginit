@@ -370,12 +370,18 @@ where
 
     /// Handles application resumption.
     ///
+    /// - [`Context::window`]\: Available.
+    /// - [`Context::wgpu`]\: Available.
+    ///
     /// See [`winit::application::ApplicationHandler::resumed`] for more details.
     fn resumed(&mut self, ctxt: &Context) {
         let _ = ctxt;
     }
 
     /// Handles application memory warnings.
+    ///
+    /// - [`Context::window`]\: Available.
+    /// - [`Context::wgpu`]\: Available.
     ///
     /// See [`winit::application::ApplicationHandler::memory_warning`] for more details.
     fn memory_warning(&mut self, ctxt: &Context) {
@@ -384,7 +390,8 @@ where
 
     /// Handles when the application receives new events ready to be processed.
     ///
-    /// Note that because this is called before the window or wgpu state is initialized, it only receives [`winit::event_loop::ActiveEventLoop`].
+    /// - [`Context::window`]\: Not available.
+    /// - [`Context::wgpu`]\: Not available.
     ///
     /// See [`winit::application::ApplicationHandler::new_events`] for more details.
     fn new_events(
@@ -397,19 +404,28 @@ where
 
     /// Handles when the application is about to block and wait for new events.
     ///
+    /// - [`Context::window`]\: Available.
+    /// - [`Context::wgpu`]\: May or may not be available.
+    ///
     /// See [`winit::application::ApplicationHandler::about_to_wait`] for more details.
     fn about_to_wait(&mut self, ctxt: &Context) {
         let _ = ctxt;
     }
 
     /// Handles application suspension.
-    /// ///
+    ///
+    /// - [`Context::window`]\: Available.
+    /// - [`Context::wgpu`]\: Not available.
+    ///
     /// See [`winit::application::ApplicationHandler::suspended`] for more details.
     fn suspended(&mut self, ctxt: &Context) {
         let _ = ctxt;
     }
 
     /// Handles application exiting.
+    ///
+    /// - [`Context::window`]\: Available.
+    /// - [`Context::wgpu`]\: Available.
     ///
     /// See [`winit::application::ApplicationHandler::exiting`] for more details.
     fn exiting(&mut self, ctxt: &Context) {
@@ -420,6 +436,9 @@ where
     ///
     /// wginit will handle [`winit::event::WindowEvent::Resized`] to update the size of the wgpu surface. You must handle all other events yourself.
     ///
+    /// - [`Context::window`]\: Available.
+    /// - [`Context::wgpu`]\: May or may not be available.
+    ///
     /// See [`winit::application::ApplicationHandler::window_event`] for more details.
     fn window_event(&mut self, ctxt: &Context, event: winit::event::WindowEvent) {
         let _ = (ctxt, event);
@@ -428,11 +447,17 @@ where
     /// Handles a user event.
     ///
     /// User events can be sent using [`UserEventSender`].
+    ///
+    /// - [`Context::window`]\: May or may not be available.
+    /// - [`Context::wgpu`]\: May or may not be available.
     fn user_event(&mut self, ctxt: &Context, event: Self::UserEvent) {
         let _ = (ctxt, event);
     }
 
     /// Handles a device event.
+    ///
+    /// - [`Context::window`]\: May or may not be available.
+    /// - [`Context::wgpu`]\: May or may not be available.
     ///
     /// See [`winit::application::ApplicationHandler::device_event`] for more details.
     fn device_event(

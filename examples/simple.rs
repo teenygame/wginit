@@ -95,7 +95,9 @@ impl wginit::ApplicationHandler for Application {
     fn window_event(&mut self, ctxt: &wginit::Context, event: winit::event::WindowEvent) {
         match event {
             winit::event::WindowEvent::RedrawRequested => {
-                let gfx_state = self.gfx_state.as_ref().unwrap();
+                let Some(gfx_state) = &self.gfx_state else {
+                    return;
+                };
                 let wgpu = ctxt.wgpu.unwrap();
                 let window = ctxt.window.unwrap();
 

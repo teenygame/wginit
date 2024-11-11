@@ -92,52 +92,39 @@ impl wginit::ApplicationHandler for Application {
         self.gfx_state = None;
     }
 
-    fn window_event(&mut self, ctxt: &wginit::Context, event: winit::event::WindowEvent) {
-        match event {
-            winit::event::WindowEvent::RedrawRequested => {
-                let Some(gfx_state) = self.gfx_state.as_ref() else {
-                    return;
-                };
-                let wgpu = ctxt.wgpu.unwrap();
-                let window = ctxt.window.unwrap();
-
-                let frame = wgpu.surface.get_current_texture().unwrap();
-                let view = frame
-                    .texture
-                    .create_view(&wgpu::TextureViewDescriptor::default());
-                let mut encoder = wgpu
-                    .device
-                    .create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
-                {
-                    let mut rpass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                        label: None,
-                        color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                            view: &view,
-                            resolve_target: None,
-                            ops: wgpu::Operations {
-                                load: wgpu::LoadOp::Clear(wgpu::Color::GREEN),
-                                store: wgpu::StoreOp::Store,
-                            },
-                        })],
-                        depth_stencil_attachment: None,
-                        timestamp_writes: None,
-                        occlusion_query_set: None,
-                    });
-                    rpass.set_pipeline(&gfx_state.render_pipeline);
-                    rpass.draw(0..3, 0..1);
-                }
-
-                wgpu.queue.submit(Some(encoder.finish()));
-
-                window.pre_present_notify();
-                frame.present();
-                window.request_redraw();
-            }
-            winit::event::WindowEvent::CloseRequested => {
-                ctxt.event_loop.exit();
-            }
-            _ => {}
+    fn redraw(&mut self, window: &winit::window::Window, wgpu: &wginit::Wgpu) {
+        let gfx_state = self.gfx_state.as_ref().unwrap();
+        let frame = wgpu.surface.get_current_texture().unwrap();
+        let view = frame
+            .texture
+            .create_view(&wgpu::TextureViewDescriptor::default());
+        let mut encoder = wgpu
+            .device
+            .create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
+        {
+            let mut rpass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: None,
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view: &view,
+                    resolve_target: None,
+                    ops: wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(wgpu::Color::GREEN),
+                        store: wgpu::StoreOp::Store,
+                    },
+                })],
+                depth_stencil_attachment: None,
+                timestamp_writes: None,
+                occlusion_query_set: None,
+            });
+            rpass.set_pipeline(&gfx_state.render_pipeline);
+            rpass.draw(0..3, 0..1);
         }
+
+        wgpu.queue.submit(Some(encoder.finish()));
+
+        window.pre_present_notify();
+        frame.present();
+        window.request_redraw();
     }
 }
 

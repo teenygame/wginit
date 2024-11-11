@@ -243,6 +243,13 @@ where
                 );
                 window.request_redraw();
             }
+            winit::event::WindowEvent::RedrawRequested => {
+                let window = self.window.as_ref().unwrap();
+                let Some(wgpu) = self.wgpu.as_ref() else {
+                    return;
+                };
+                self.app.redraw(window, wgpu);
+            }
             _ => {}
         };
 
@@ -467,6 +474,13 @@ where
         event: winit::event::DeviceEvent,
     ) {
         let _ = (ctxt, device_id, event);
+    }
+
+    /// Handles a redraw request.
+    ///
+    /// It will run whenever [`winit::event::WindowEvent::RedrawRequested`] is emitted *and* wgpu is initialized.
+    fn redraw(&mut self, window: &winit::window::Window, wgpu: &Wgpu) {
+        let _ = (window, wgpu);
     }
 }
 

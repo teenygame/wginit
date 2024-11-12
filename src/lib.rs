@@ -2,6 +2,9 @@
 //!
 //! It only handles one device.
 
+pub use wgpu;
+pub use winit;
+
 /// A context struct passed to application handlers while the application is not suspended.
 ///
 /// It contains all wgpu and winit state.

@@ -49,10 +49,14 @@ pub struct Wgpu {
     pub adapter: wgpu::Adapter,
     /// The current [`wgpu::Surface`].
     pub surface: wgpu::Surface<'static>,
+    /// The current counter for times the wgpu state has been suspended.
+    ///
+    /// This can be useful to determine if the wgpu state was reinitialized from the last time the wgpu state was passed.
+    pub suspend_count: u64,
 }
 
 impl Wgpu {
-    async fn new<A>(window: std::sync::Arc<winit::window::Window>) -> Self
+    async fn new<A>(window: std::sync::Arc<winit::window::Window>, suspend_count: u64) -> Self
     where
         A: ApplicationHandler,
     {
@@ -80,6 +84,7 @@ impl Wgpu {
             queue,
             adapter,
             surface,
+            suspend_count,
         }
     }
 }
@@ -139,6 +144,7 @@ where
     app: A,
     window: Option<std::sync::Arc<winit::window::Window>>,
     wgpu: Option<Wgpu>,
+    suspend_count: u64,
     event_loop_proxy: winit::event_loop::EventLoopProxy<UserEvent<A::UserEvent>>,
 }
 
@@ -151,6 +157,7 @@ where
             app,
             window: None,
             wgpu: None,
+            suspend_count: 0,
             event_loop_proxy: event_loop.create_proxy(),
         }
     }
@@ -176,7 +183,9 @@ where
         let event_loop_proxy = self.event_loop_proxy.clone();
         let fut = async move {
             assert!(event_loop_proxy
-                .send_event(UserEvent::WgpuReady(Wgpu::new::<A>(window).await))
+                .send_event(UserEvent::WgpuReady(
+                    Wgpu::new::<A>(window, self.suspend_count).await
+                ))
                 .is_ok());
         };
 
@@ -189,6 +198,7 @@ where
 
     fn suspended(&mut self, event_loop: &winit::event_loop::ActiveEventLoop) {
         self.wgpu = None;
+        self.suspend_count += 1;
         self.app.suspended(&Context::new(
             event_loop,
             self.window.as_ref().map(|window| window.as_ref()),
